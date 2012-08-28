@@ -29,11 +29,16 @@ return function (root)
           '<ul>',
       }
       for i, file in ipairs(files) do
-        html[#html + 1] = 
+        html[#html + 1] =
             '<li><a href="' .. file .. '">' .. file .. '</a></li>'
       end
       html[#html + 1] = '</ul></body></html>'
-      res:finish(table.concat(html, ''))
+      html = table.concat(html, '')
+      res:writeHead({
+          ["Content-Type"] = "text/html",
+          ["Content-Length"] = #html
+      })
+      res:finish(html)
     end)
   end
 end

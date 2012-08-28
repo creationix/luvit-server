@@ -9,8 +9,8 @@ local server = http.createServer(stack(
     p(req.method, req.url)
     pass()
   end,
-  require('./static')(root),
-  require('./listing')(root)
+  require('static')(root),
+  require('listing')(root)
 ))
 
 server:listen(8080, function ()
