@@ -25,17 +25,3 @@ app = require('log')(app)
 
 local server = createServer("0.0.0.0", 8080, app)
 p("http server listening on ", server:getsockname())
-
---[[
-local server = http.createServer(stack(
-  function (req, res, pass)
-    pass()
-  end,
-  require('static')(root),
-  require('listing')(root)
-))
-
-server:listen(8080, function ()
-  p(server:address())
-end)
-]]
