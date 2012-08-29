@@ -110,8 +110,9 @@ function web.createServer(host, port, onRequest)
               client:write(chunk)
             end)
             body:on("end", function ()
-              client:shutdown()
-              client:close()
+              client:shutdown(function ()
+                client:close()
+              end)
             end)
           end
         end)
@@ -126,6 +127,7 @@ function web.createServer(host, port, onRequest)
     client:on('data', function (chunk)
       if #chunk == 0 then return end
       local nparsed = parser:execute(chunk, 0, #chunk)
+      -- TODO: handle various cases here
     end)
   end)
   return server
