@@ -16,10 +16,12 @@ local function app(req, res)
   }, "Not Found\n")
 end
 
--- Allow directory listing
-app = require('listing')(app, __dirname .. "/public")
--- Serve static files
-app = require('static')(app, __dirname .. "/public")
+-- Serve static files and index directories
+app = require('static')(app, {
+  root = __dirname .. "/public",
+  index = "index.html",
+  autoIndex = true
+})
 -- Log all requests
 app = require('log')(app)
 

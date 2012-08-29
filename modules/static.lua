@@ -3,6 +3,8 @@ local fs = require 'fs'
 local pathJoin = require('path').join
 local urlParse = require('url').parse
 local getType = require('mime').getType
+local osDate = require('os').date
+local iStream = require('core').iStream
 
 local floor = require('math').floor
 local table = require 'table'
@@ -34,39 +36,122 @@ local function calcEtag(stat)
          '-' .. numToBase(stat.mtime, 64) .. '"'
 end
 
-return function (app, root)
-  return function (req, res)
-    local path = pathJoin(root, req.url.path)
-    if path:sub(#path) == '/' then
-      path = path .. 'index.html'
+local function createDirStream(path, options)
+  local stream = iStream:new()
+  fs.readdir(path, function (err, files)
+    if err then stream:emit("error", err) end
+    local html = {
+      '<!doctype html>',
+      '<html>',
+      '<head>',
+        '<title>' .. path .. '</title>',
+      '</head>',
+      '<body>',
+        '<h1>' .. path .. '</h1>',
+        '<ul>'
+    }
+    for i, file in ipairs(files) do
+      html[#html + 1] =
+          '<li><a href="' .. file .. '">' .. file .. '</a></li>'
     end
-    fs.open(path, "r", function (err, fd)
-      if err then
-        if err.code == 'ENOENT' then
-          return app(req, res)
-        end
-        return res(500, {}, tostring(err))
-      end
-      fs.fstat(fd, function (err, stat)
+    html[#html + 1] = '</ul></body></html>\n'
+    html = table.concat(html)
+    stream:emit("data", html)
+    stream:emit("end")
+  end)
+  return stream
+end
+
+
+return function (app, options)
+  if not options.root then error("options.root is required") end
+  local root = options.root
+
+  return function (req, res)
+    -- Ignore non-GET/HEAD requests
+    if not (req.method == "HEAD" or req.method == "GET") then
+      return app(req, res)
+    end
+
+    local function serve(path, fallback)
+      p("serve", path, fallback)
+      fs.open(path, "r", function (err, fd)
         if err then
+          if err.code == 'ENOENT' then
+            if fallback then return serve(fallback) end
+            return app(req, res)
+          end
           return res(500, {}, tostring(err))
         end
 
-        local etag = calcEtag(stat)
+        fs.fstat(fd, function (err, stat)
+          if err then
+            -- This shouldn't happen often, forward it just in case.
+            fs.close(fd)
+            return res(500, {}, tostring(err))
+          end
 
-        if etag == req.headers['if-none-match'] then
-          return res(304, {
+          local etag = calcEtag(stat)
+          local code = 200
+          local headers = {
+            ['Date'] = osDate("!%a, %d %b %Y %H:%M:%S GMT"),
+            ['Last-Modified'] = osDate("!%a, %d %b %Y %H:%M:%S GMT", stat.mtime),
             ['ETag'] = etag
-          })
-        end
+          }
+          local stream
 
-        local stream = fs.createReadStream(nil, {fd=fd})
-        res(200, {
-          ['Content-Type'] = getType(path),
-          ['Content-Length'] = stat.size,
-          ['ETag'] = etag
-        }, stream)
+          if etag == req.headers['if-none-match'] then
+            code = 304
+          end
+
+          if path:sub(#path) == '/' then
+            -- We're done with the fd, createDirStream opens it again by path.
+            fs.close(fd)
+
+            if not options.autoIndex then
+              -- Ignore directory requests if we don't have autoIndex on
+              return app(req, res)
+            end
+
+            if not stat.is_directory then
+              -- Can't autoIndex non-directories
+              return res(500, {}, path .. ' is not a directory')
+            end
+
+            headers["Content-Type"] = "text/html"
+            -- Create the index stream
+            if not (req.method == "HEAD" or code == 304) then
+              stream = createDirStream(path, options.autoIndex)
+            end
+          else
+            if stat.is_directory then
+              -- Can't serve directories as files
+              fs.close(fd)
+              return res(500, {}, path .. ' is a directory')
+            end
+
+            headers["Content-Type"] = getType(path)
+            headers["Content-Length"] = stat.size
+
+            if req.method ~= "HEAD" then
+              stream = fs.createReadStream(nil, {fd=fd})
+            else
+              fs.close(fd)
+            end
+          end
+          res(code, headers, stream)
+        end)
       end)
-    end)
+    end
+
+    local path = pathJoin(options.root, req.url.path)
+
+    if options.index and path:sub(#path) == '/' then
+      serve(pathJoin(path, options.index), path)
+    else
+      serve(path)
+    end
+
   end
 end
+
