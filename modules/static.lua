@@ -50,7 +50,7 @@ local function createDirStream(path, options)
       '</head>',
       '<body>',
         '<h1>' .. path .. '</h1>',
-        '<ul>'
+        '<ul><li><a href="../">..</a></li>'
     }
     for i, file in ipairs(files) do
       html[#html + 1] =
@@ -100,7 +100,6 @@ return function (app, options)
           local etag = calcEtag(stat)
           local code = 200
           local headers = {
-            ['Date'] = osDate("!%a, %d %b %Y %H:%M:%S GMT"),
             ['Last-Modified'] = osDate("!%a, %d %b %Y %H:%M:%S GMT", stat.mtime),
             ['ETag'] = etag
           }
