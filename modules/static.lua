@@ -2,12 +2,12 @@
 local fs = require 'fs'
 local pathJoin = require('path').join
 local urlParse = require('url').parse
-local getMime = require('./mime').getMime
+local getType = require('mime').getType
 
 local floor = require('math').floor
 local table = require 'table'
 
--- For encoding numbers using modified base 64 for compact etags
+-- For encoding numbers using bases up to 64
 local digits = {
   "0", "1", "2", "3", "4", "5", "6", "7",
   "8", "9", "A", "B", "C", "D", "E", "F",
@@ -34,45 +34,38 @@ local function calcEtag(stat)
          '-' .. numToBase(stat.mtime, 64) .. '"'
 end
 
-return function (root)
-  return function (req, res, pass)
-    if not req.uri then
-      req.uri = urlParse(req.url)
-    end
-    local path = pathJoin(root, req.uri.pathname)
+return function (app, root)
+  return function (req, res)
+    local path = pathJoin(root, req.url.path)
     if path:sub(#path) == '/' then
       path = path .. 'index.html'
     end
     fs.open(path, "r", function (err, fd)
       if err then
-        if err.code == 'ENOENT' then return
-          pass()
+        if err.code == 'ENOENT' then
+          return app(req, res)
         end
-        return pass(tostring(err))
+        return res(500, {}, tostring(err))
       end
       fs.fstat(fd, function (err, stat)
         if err then
-          return pass(tostring(err))
+          return res(500, {}, tostring(err))
         end
 
-        p{headers=req.headers,stat=stat}
         local etag = calcEtag(stat)
 
         if etag == req.headers['if-none-match'] then
-          res:writeHead(304, {
+          return res(304, {
             ['ETag'] = etag
           })
-          res:finish()
-          return
         end
 
         local stream = fs.createReadStream(nil, {fd=fd})
-        res:writeHead(200, {
-          ['Content-Type'] = getMime(path),
+        res(200, {
+          ['Content-Type'] = getType(path),
           ['Content-Length'] = stat.size,
           ['ETag'] = etag
-        })
-        stream:pipe(res)
+        }, stream)
       end)
     end)
   end

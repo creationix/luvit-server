@@ -4,28 +4,30 @@ local pathJoin = require('path').join
 local urlParse = require('url').parse
 local table = require 'table'
 
-return function (root)
-  return function (req, res, pass)
-    local uri = urlParse(req.url)
-    local path = pathJoin(root, uri.pathname)
+return function (app, root)
+  return function (req, res)
+    local path = req.url.path
     if path:sub(#path) ~= '/' then
-      return pass()
+      return app(req, res)
     end
+    path = path:sub(1, #path - 1)
+    path = pathJoin(root, req.url.path)
     fs.readdir(path, function (err, files)
+      p(path, err, files)
       if err then
         if err.code == 'ENOENT' then
-          return pass()
+          return app(req, res)
         end
-        return pass(tostring(err))
+        return res(500, {}, tostring(err))
       end
       local html = {
         '<!doctype html>',
         '<html>',
         '<head>',
-          '<title>' .. uri.pathname .. '</title>',
+          '<title>' .. req.url.path .. '</title>',
         '</head>',
         '<body>',
-          '<h1>' .. uri.pathname .. '</h1>',
+          '<h1>' .. req.url.path .. '</h1>',
           '<ul>',
       }
       for i, file in ipairs(files) do
@@ -34,11 +36,10 @@ return function (root)
       end
       html[#html + 1] = '</ul></body></html>'
       html = table.concat(html, '')
-      res:writeHead({
+      res(200, {
           ["Content-Type"] = "text/html",
           ["Content-Length"] = #html
-      })
-      res:finish(html)
+      }, html)
     end)
   end
 end
