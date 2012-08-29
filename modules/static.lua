@@ -76,7 +76,6 @@ return function (app, options)
     end
 
     local function serve(path, fallback)
-      p("serve", path, fallback)
       fs.open(path, "r", function (err, fd)
         if err then
           if err.code == 'ENOENT' or err.code == 'ENOTDIR' then
