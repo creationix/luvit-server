@@ -39,7 +39,9 @@ end
 local function createDirStream(path, options)
   local stream = iStream:new()
   fs.readdir(path, function (err, files)
-    if err then stream:emit("error", err) end
+    if err then
+      stream:emit("error", err)
+    end
     local html = {
       '<!doctype html>',
       '<html>',
@@ -77,18 +79,23 @@ return function (app, options)
       p("serve", path, fallback)
       fs.open(path, "r", function (err, fd)
         if err then
-          if err.code == 'ENOENT' then
+          if err.code == 'ENOENT' or err.code == 'ENOTDIR' then
             if fallback then return serve(fallback) end
+            if err.code == 'ENOTDIR' and path:sub(#path) == '/' then
+              return res(302, {
+                ["Location"] = req.url.path:sub(1, #req.url.path - 1)
+              })
+            end
             return app(req, res)
           end
-          return res(500, {}, tostring(err))
+          return res(500, {}, tostring(err) .. "\n" .. require('debug').traceback() .. "\n")
         end
 
         fs.fstat(fd, function (err, stat)
           if err then
             -- This shouldn't happen often, forward it just in case.
             fs.close(fd)
-            return res(500, {}, tostring(err))
+            return res(500, {}, tostring(err) .. "\n" .. require('debug').traceback() .. "\n")
           end
 
           local etag = calcEtag(stat)
@@ -115,7 +122,9 @@ return function (app, options)
 
             if not stat.is_directory then
               -- Can't autoIndex non-directories
-              return res(500, {}, path .. ' is not a directory')
+              return res(302, {
+                ["Location"] = req.url.path:sub(1, #req.url.path - 1)
+              })
             end
 
             headers["Content-Type"] = "text/html"
@@ -127,7 +136,9 @@ return function (app, options)
             if stat.is_directory then
               -- Can't serve directories as files
               fs.close(fd)
-              return res(500, {}, path .. ' is a directory')
+              return res(302, {
+                ["Location"] = req.url.path .. "/"
+              })
             end
 
             headers["Content-Type"] = getType(path)
